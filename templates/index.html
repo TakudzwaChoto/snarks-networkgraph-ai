@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>River Water Quality Management System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/vis-network@9.1.2/dist/dist/vis-network.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --accent-color: #e74c3c;
+            --success-color: #27ae60;
+            --warning-color: #f39c12;
+            --light-bg: #ecf0f1;
+            --dark-bg: #34495e;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .navbar {
+            background: rgba(44, 62, 80, 0.95) !important;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 2px 20px rgba(0,0,0,0.1);
+        }
+
+        .navbar-brand {
+            font-weight: bold;
+            color: white !important;
+        }
+
+        .nav-link {
+            color: rgba(255,255,255,0.8) !important;
+            transition: color 0.3s ease;
+        }
+
+        .nav-link:hover {
+            color: white !important;
+        }
+
+        .main-container {
+            padding: 2rem 0;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+        }
+
+        .card-header {
+            background: linear-gradient(135deg, var(--secondary-color), var(--primary-color));
+            color: white;
+            border-radius: 15px 15px 0 0 !important;
+            border: none;
+            padding: 1.5rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--secondary-color), var(--primary-color));
+            border: none;
+            border-radius: 25px;
+            padding: 0.75rem 2rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, var(--success-color), #2ecc71);
+            border: none;
+            border-radius: 25px;
+            padding: 0.75rem 2rem;
+            font-weight: 600;
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, var(--warning-color), #e67e22);
+            border: none;
+            border-radius: 25px;
+            padding: 0.75rem 2rem;
+            font-weight: 600;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, var(--accent-color), #c0392b);
+            border: none;
+            border-radius: 25px;
+            padding: 0.75rem 2rem;
+            font-weight: 600;
+        }
+
+        .graph-container {
+            height: 600px;
+            border-radius: 15px;
+            overflow: hidden;
+            background: white;
+        }
+
+        .stats-card {
+            text-align: center;
+            padding: 1.5rem;
+        }
+
+        .stats-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: var(--secondary-color);
+        }
+
+        .stats-label {
+            color: #666;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .alert-card {
+            border-left: 4px solid var(--accent-color);
+            background: rgba(231, 76, 60, 0.1);
+        }
+
+        .prediction-form {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .form-control {
+            border-radius: 10px;
+            border: 2px solid #e9ecef;
+            padding: 0.75rem 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-control:focus {
+            border-color: var(--secondary-color);
+            box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .spinner-border {
+            color: var(--secondary-color);
+        }
+
+        .feature-icon {
+            font-size: 3rem;
+            color: var(--secondary-color);
+            margin-bottom: 1rem;
+        }
+
+        .hero-section {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 3rem;
+            margin-bottom: 2rem;
+            text-align: center;
+            color: white;
+        }
+
+        .hero-title {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+        }
+
+        .hero-subtitle {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        @media (max-width: 768px) {
+            .hero-title {
+                font-size: 2rem;
+            }
+            
+            .stats-number {
+                font-size: 2rem;
+            }
+        }
+
+        .graph-container {
+         height: 600px;
+         border-radius: 15px;
+         overflow: hidden;
+         background: white;
+         position: relative;
+        }
+
+        /* Performance optimizations */
+        .graph-container canvas {
+        image-rendering: optimizeSpeed;
+        image-rendering: -moz-crisp-edges;
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: optimize-contrast;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark fixed-top">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-water me-2"></i>
+                River Management System
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="#dashboard">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#graph">Network Graph</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#predictions">Predictions</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#alerts">Alerts</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="main-container">
+        <div class="container">
+            <!-- Hero Section -->
+            <div class="hero-section">
+                <h1 class="hero-title">River Water Quality Management</h1>
+                <p class="hero-subtitle">Advanced monitoring and prediction system using Neo4j and Machine Learning</p>
+                <a href="/initialize-database" class="btn btn-success btn-lg">
+                    <i class="fas fa-database me-2"></i>
+                    Initialize Database
+                </a>
+            </div>
+
+            <!-- Flash Messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <!-- Statistics Cards -->
+            <div class="row mb-4" id="dashboard">
+                <div class="col-md-3 mb-3">
+                    <div class="card stats-card">
+                        <div class="stats-number" id="total-nodes">0</div>
+                        <div class="stats-label">River Segments</div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="card stats-card">
+                        <div class="stats-number" id="total-relationships">0</div>
+                        <div class="stats-label">Connections</div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="card stats-card">
+                        <div class="stats-number" id="avg-nh3">0</div>
+                        <div class="stats-label">Avg NH3 (mg/L)</div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="card stats-card">
+                        <div class="stats-number" id="alerts-count">0</div>
+                        <div class="stats-label">Active Alerts</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Network Graph -->
+            <div class="row mb-4" id="graph">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-project-diagram me-2"></i>
+                                River Network Topology
+                            </h5>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="loading" id="graph-loading">
+                                <div class="spinner-border" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2">Loading river network...</p>
+                            </div>
+                            <div id="graph-container" class="graph-container"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Predictions and Alerts Row -->
+            <div class="row mb-4">
+                <!-- ML Predictions -->
+                <div class="col-md-6 mb-3" id="predictions">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-brain me-2"></i>
+                                Water Quality Trading Prediction
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="prediction-form">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="buyer-segment" class="form-label">Buyer Segment</label>
+                                        <input type="number" class="form-control" id="buyer-segment" min="1" max="160" value="1">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="seller-segment" class="form-label">Seller Segment</label>
+                                        <input type="number" class="form-control" id="seller-segment" min="1" max="160" value="2">
+                                    </div>
+                                </div>
+                                <button class="btn btn-primary w-100" onclick="predictTrade()">
+                                    <i class="fas fa-calculator me-2"></i>
+                                    Predict Trade Amount
+                                </button>
+                                <div class="mt-3">
+                                    <div class="alert alert-info" id="prediction-result" style="display: none;">
+                                        <strong>Predicted Trade Amount:</strong> <span id="predicted-amount">0</span> WEC units
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Water Quality Alerts -->
+                <div class="col-md-6 mb-3" id="alerts">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                Water Quality Alerts
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label for="alert-threshold" class="form-label">Alert Threshold (mg/L)</label>
+                                <input type="number" class="form-control" id="alert-threshold" value="1.0" step="0.1" min="0">
+                            </div>
+                            <button class="btn btn-warning w-100 mb-3" onclick="checkAlerts()">
+                                <i class="fas fa-search me-2"></i>
+                                Check Alerts
+                            </button>
+                            <div id="alerts-container">
+                                <div class="alert alert-success">
+                                    <i class="fas fa-check-circle me-2"></i>
+                                    No water quality alerts at this time.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- zkSNARK Verification Metrics -->
+            <div class="row mb-4" id="zk">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-shield-alt me-2"></i>
+                                zkSNARK Verification Metrics
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row mb-3">
+                                <div class="col-md-3 mb-2">
+                                    <div class="stats-card">
+                                        <div class="stats-number" id="zk-total">0</div>
+                                        <div class="stats-label">Total</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3 mb-2">
+                                    <div class="stats-card">
+                                        <div class="stats-number" id="zk-verified">0</div>
+                                        <div class="stats-label">Verified</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3 mb-2">
+                                    <div class="stats-card">
+                                        <div class="stats-number" id="zk-failed">0</div>
+                                        <div class="stats-label">Failed</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3 mb-2">
+                                    <div class="stats-card">
+                                        <div class="stats-number" id="zk-avgms">0</div>
+                                        <div class="stats-label">Avg Verify (ms)</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div id="zk-verify-rate"></div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div id="zk-latency"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Features Section -->
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <div class="feature-icon">
+                                <i class="fas fa-database"></i>
+                            </div>
+                            <h5>Neo4j Graph Database</h5>
+                            <p class="text-muted">Advanced graph database for complex river topology relationships</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <div class="feature-icon">
+                                <i class="fas fa-brain"></i>
+                            </div>
+                            <h5>Machine Learning</h5>
+                            <p class="text-muted">AI-powered predictions for water quality trading optimization</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <div class="feature-icon">
+                                <i class="fas fa-chart-line"></i>
+                            </div>
+                            <h5>Real-time Monitoring</h5>
+                            <p class="text-muted">Live monitoring of water quality parameters and alerts</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card-body p-0">
+        <div class="loading" id="graph-loading">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading river network...</p>
+        </div>
+        <div id="graph-container" class="graph-container">
+            <div class="d-flex align-items-center justify-content-center h-100">
+                <div class="text-center">
+                    <i class="fas fa-project-diagram fa-3x text-muted mb-3"></i>
+                    <h5>River Network Visualization</h5>
+                    <p class="text-muted">Graph will load here once data is available</p>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="loadGraphData()">
+                            <i class="fas fa-sync-alt me-2"></i>
+                            Refresh Graph
+                        </button>
+                        <button class="btn btn-info" onclick="testGraphData()">
+                            <i class="fas fa-bug me-2"></i>
+                            Debug
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+        <!-- Scripts -->
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+        
+        <script>
+            // Load Vis.js with fallback
+            function loadVisJS() {
+                const sources = [
+                    'https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js',
+                    'https://unpkg.com/vis@4.21.0/dist/vis.min.js',
+                    'https://cdn.jsdelivr.net/npm/vis@4.21.0/dist/vis.min.js'
+                ];
+                
+                function trySource(index) {
+                    if (index >= sources.length) {
+                        console.error('All Vis.js sources failed!');
+                        return;
+                    }
+                    
+                    const script = document.createElement('script');
+                    script.src = sources[index];
+                    script.onload = function() {
+                        console.log('✅ Vis.js loaded from:', sources[index]);
+                        if (typeof vis !== 'undefined') {
+                            console.log('vis object available:', vis);
+                            // Initialize the app once Vis.js is loaded
+                            initializeApp();
+                        }
+                    };
+                    script.onerror = function() {
+                        console.log('❌ Failed to load from:', sources[index]);
+                        trySource(index + 1);
+                    };
+                    document.head.appendChild(script);
+                }
+                
+                trySource(0);
+            }
+            
+            let network = null;
+            let graphData = { nodes: [], relationships: [] };
+    
+            // Initialize the application
+            function initializeApp() {
+                console.log('Initializing application...');
+                loadGraphData();
+                loadWaterQualityStats();
+                checkAlerts();
+                loadZkMetrics(); // Initialize zk metrics
+            }
+    
+            // Load graph data and create network visualization
+            async function loadGraphData() {
+                console.log('=== LOAD GRAPH DATA DEBUG ===');
+                
+                const loading = document.getElementById('graph-loading');
+                const container = document.getElementById('graph-container');
+                
+                console.log('Loading element:', loading);
+                console.log('Container element:', container);
+                
+                if (loading) loading.style.display = 'block';
+                if (container) container.style.display = 'none';
+    
+                try {
+                    console.log('Fetching graph data from API...');
+                    const response = await axios.get('/api/graph-data');
+                    console.log('API response received:', response.data);
+                    
+                    graphData = response.data;
+                    
+                    // Update statistics
+                    document.getElementById('total-nodes').textContent = graphData.nodes.length;
+                    document.getElementById('total-relationships').textContent = graphData.relationships.length;
+    
+                    console.log(`Found ${graphData.nodes.length} nodes and ${graphData.relationships.length} relationships`);
+    
+                    if (graphData.nodes.length === 0) {
+                        console.log('No nodes found - showing empty state');
+                        if (loading) {
+                            loading.innerHTML = '<p class="text-info">No graph data available. Try initializing the database.</p>';
+                        }
+                        return;
+                    }
+    
+                    console.log('Calling createNetwork...');
+
+                    // Create network visualization
+                    createNetwork();
+                    
+                    if (loading) loading.style.display = 'none';
+                    if (container) container.style.display = 'block';
+                    
+                    console.log('Graph loading completed');
+                } catch (error) {
+                    console.error('Error loading graph data:', error);
+                    if (loading) {
+                        loading.innerHTML = `
+                            <div class="alert alert-danger">
+                                <h5>Error loading graph data</h5>
+                                <p>${error.message}</p>
+                                <button class="btn btn-primary" onclick="loadGraphData()">Retry</button>
+                            </div>
+                        `;
+                    }
+                }
+            }
+    
+            // Create network visualization using vis.js
+            // Create network visualization using vis.js
+function createNetwork() {
+    console.log('=== CREATE NETWORK DEBUG ===');
+    console.log('vis library available:', typeof vis !== 'undefined');
+    console.log('graphData nodes:', graphData.nodes.length);
+    console.log('graphData relationships:', graphData.relationships.length);
+    
+    if (typeof vis === 'undefined') {
+        console.error('Vis.js library not loaded!');
+        document.getElementById('graph-loading').innerHTML = `
+            <div class="alert alert-danger">
+                <h5>Error: Vis.js library not loaded</h5>
+                <p>Please check your internet connection and refresh the page.</p>
+                <button class="btn btn-primary" onclick="location.reload()">Refresh Page</button>
+            </div>
+        `;
+        return;
+    }
+
+    const container = document.getElementById('graph-container');
+    console.log('Container element:', container);
+    
+    if (!container) {
+        console.error('Graph container not found!');
+        return;
+    }
+    
+    // Clear the container first
+    container.innerHTML = '';
+    
+    try {
+        console.log('Limiting graph size for performance...');
+        
+        // Limit the number of nodes and relationships for performance
+        const maxNodes = 500; // Limit to 500 nodes
+        const maxRelationships = 800; // Limit to 800 relationships
+        
+        // Take a sample of nodes (first 500)
+        const sampleNodes = graphData.nodes.slice(0, maxNodes);
+        const nodeIds = new Set(sampleNodes.map(node => node.id));
+        
+        // Filter relationships to only include those between sampled nodes
+        const sampleRelationships = graphData.relationships
+            .filter(rel => nodeIds.has(rel.source) && nodeIds.has(rel.target))
+            .slice(0, maxRelationships);
+        
+        console.log(`Using ${sampleNodes.length} nodes and ${sampleRelationships.length} relationships for visualization`);
+        
+        // Create nodes
+        const nodes = new vis.DataSet(sampleNodes.map(node => ({
+            id: node.id,
+            label: node.label || `Node ${node.id}`,
+            color: node.color || '#3498db',
+            size: Math.min(15, Math.max(5, (node.size || 10))), // Limit size
+            title: JSON.stringify(node.properties, null, 2)
+        })));
+        
+        console.log('Creating vis.DataSet for edges...');
+        
+        // Create edges
+        const edges = new vis.DataSet(sampleRelationships.map(rel => ({
+            from: rel.source,
+            to: rel.target,
+            label: rel.type,
+            arrows: 'to',
+            color: { color: '#666', opacity: 0.6 },
+            width: 1 // Thinner edges for better performance
+        })));
+        
+        console.log('Setting up network options...');
+        
+        // Network options optimized for performance
+        const options = {
+            nodes: {
+                shape: 'circle',
+                font: { size: 10, color: '#333' }, // Smaller font
+                borderWidth: 1, // Thinner borders
+                shadow: false, // Disable shadows for performance
+                scaling: {
+                    min: 5,
+                    max: 15
+                }
+            },
+            edges: {
+                width: 1, // Thinner edges
+                shadow: false, // Disable shadows
+                font: { size: 8, color: '#666' }, // Smaller font
+                smooth: {
+                    type: 'continuous',
+                    forceDirection: 'none'
+                }
+            },
+            physics: {
+                enabled: true,
+                barnesHut: {
+                    gravitationalConstant: -1000, // Reduced force
+                    springConstant: 0.02, // Reduced spring force
+                    springLength: 100, // Shorter springs
+                    damping: 0.3 // Add damping
+                },
+                stabilization: {
+                    enabled: true,
+                    iterations: 100, // Limit iterations
+                    updateInterval: 25
+                }
+            },
+            interaction: {
+                hover: true,
+                zoomView: true,
+                dragView: true,
+                hideEdgesOnDrag: true, // Hide edges during drag for performance
+                tooltipDelay: 200
+            },
+            layout: {
+                improvedLayout: true,
+                hierarchical: false
+            }
+        };
+        
+        console.log('Creating vis.Network...');
+        
+        // Create network
+        network = new vis.Network(container, { nodes, edges }, options);
+        console.log('Network created successfully!');
+        
+        // Add event listeners for debugging
+        network.on('stabilizationProgress', function(params) {
+            console.log('Stabilization progress:', params.iterations, '/', params.total);
+        });
+        
+        network.on('stabilizationIterationsDone', function() {
+            console.log('Network stabilized!');
+        });
+        
+        // Add a message about the sample
+        const infoDiv = document.createElement('div');
+        infoDiv.innerHTML = `
+            <div class="alert alert-info mt-2">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>Performance Note:</strong> Showing ${sampleNodes.length} of ${graphData.nodes.length} nodes 
+                and ${sampleRelationships.length} of ${graphData.relationships.length} relationships for optimal performance.
+                <button class="btn btn-sm btn-primary ms-2" onclick="showFullGraph()">Show Full Graph</button>
+            </div>
+        `;
+        container.parentNode.insertBefore(infoDiv, container.nextSibling);
+        
+    } catch (error) {
+        console.error('Error creating network:', error);
+        container.innerHTML = `
+            <div class="alert alert-danger">
+                <h5>Error creating network visualization</h5>
+                <p>${error.message}</p>
+                <pre>${error.stack}</pre>
+            </div>
+        `;
+    }
+}
+
+// Function to show full graph (optional)
+function showFullGraph() {
+    if (confirm('Showing the full graph may cause performance issues. Continue?')) {
+        // Reset limits and recreate network
+        createNetwork();
+    }
+}
+
+    
+            // Load water quality statistics
+            async function loadWaterQualityStats() {
+                try {
+                    const response = await axios.get('/api/water-quality-stats');
+                    const stats = response.data;
+                    
+                    if (stats.avg_nh3 !== null) {
+                        document.getElementById('avg-nh3').textContent = stats.avg_nh3.toFixed(2);
+                    }
+                } catch (error) {
+                    console.error('Error loading water quality stats:', error);
+                }
+            }
+    
+            // Check water quality alerts
+            async function checkAlerts() {
+                const threshold = document.getElementById('alert-threshold').value;
+                const container = document.getElementById('alerts-container');
+                
+                try {
+                    const response = await axios.get(`/api/water-quality-alerts?threshold=${threshold}`);
+                    const alerts = response.data;
+                    
+                    document.getElementById('alerts-count').textContent = alerts.length;
+                    
+                    if (alerts.length === 0) {
+                        container.innerHTML = `
+                            <div class="alert alert-success">
+                                <i class="fas fa-check-circle me-2"></i>
+                                No water quality alerts at this time.
+                            </div>
+                        `;
+                    } else {
+                        let alertsHtml = '';
+                        alerts.forEach(alert => {
+                            alertsHtml += `
+                                <div class="alert alert-danger">
+                                    <i class="fas fa-exclamation-triangle me-2"></i>
+                                    <strong>Segment ${alert.id}</strong>: NH3 concentration ${alert.nh3_concentration.toFixed(2)} mg/L 
+                                    (threshold: ${alert.threshold} mg/L)
+                                </div>
+                            `;
+                        });
+                        container.innerHTML = alertsHtml;
+                    }
+                } catch (error) {
+                    console.error('Error checking alerts:', error);
+                    container.innerHTML = `
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-circle me-2"></i>
+                            Error checking water quality alerts.
+                        </div>
+                    `;
+                }
+            }
+    
+            // Predict water quality trading
+            async function predictTrade() {
+                const buyer = document.getElementById('buyer-segment').value;
+                const seller = document.getElementById('seller-segment').value;
+                const resultDiv = document.getElementById('prediction-result');
+                const amountSpan = document.getElementById('predicted-amount');
+                
+                if (!buyer || !seller) {
+                    alert('Please enter both buyer and seller segment numbers');
+                    return;
+                }
+                
+                try {
+                    const response = await axios.post('/api/predict-trade', {
+                        buyer: parseInt(buyer),
+                        seller: parseInt(seller)
+                    });
+                    
+                    const prediction = response.data.prediction;
+                    amountSpan.textContent = prediction;
+                    resultDiv.style.display = 'block';
+                } catch (error) {
+                    console.error('Error predicting trade:', error);
+                    alert('Error predicting trade amount');
+                }
+            }
+
+            async function loadZkMetrics() {
+              try {
+                const res = await fetch('/api/zk/metrics');
+                const payload = await res.json();
+                if (payload.status !== 'ok') return;
+                const s = payload.stats.summary;
+                document.getElementById('zk-total').innerText = s.total;
+                document.getElementById('zk-verified').innerText = s.verified;
+                document.getElementById('zk-failed').innerText = s.failed;
+                document.getElementById('zk-avgms').innerText = s.avg_verify_ms;
+                const series = payload.stats.series;
+                // Verify rate over time
+                const trace1 = {
+                  x: series.timestamps.map(t => new Date(t)),
+                  y: series.verified,
+                  type: 'scatter',
+                  mode: 'lines+markers',
+                  name: 'Verified (1=yes)'
+                };
+                Plotly.react('zk-verify-rate', [trace1], {title: 'Verification over time'});
+                // Latency
+                const trace2 = {
+                  x: series.latency_ms,
+                  type: 'histogram',
+                  nbinsx: 20,
+                  name: 'Latency (ms)'
+                };
+                Plotly.react('zk-latency', [trace2], {title: 'Verification latency distribution'});
+              } catch (e) {
+                console.log('zk metrics error', e);
+              }
+            }
+
+            // Smooth scrolling for navigation links
+            document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const target = document.querySelector(this.getAttribute('href'));
+                    if (target) {
+                        target.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start'
+                        });
+                    }
+                });
+            });
+    
+            // Test graph data API directly
+            async function testGraphData() {
+                try {
+                    console.log('Testing graph data API...');
+                    const response = await fetch('/api/graph-data');
+                    const data = await response.json();
+                    
+                    console.log('Graph data:', data);
+                    alert(`Graph data test:\nNodes: ${data.nodes.length}\nRelationships: ${data.relationships.length}\n\nCheck browser console for details.`);
+                    
+                } catch (error) {
+                    console.error('Error testing graph data:', error);
+                    alert(`Error testing graph data: ${error.message}`);
+                }
+            }
+    
+            // Start loading Vis.js when DOM is ready
+            document.addEventListener('DOMContentLoaded', function() {
+                console.log('DOM loaded, starting Vis.js loading...');
+                loadVisJS();
+            });
+
+            // Function to show full graph (optional)
+function showFullGraph() {
+    if (confirm('Showing the full graph may cause performance issues. Continue?')) {
+        // Reset limits and recreate network
+        createNetwork();
+    }
+}
+        </script>
+    </body>
+    </html>
+
+
+  
