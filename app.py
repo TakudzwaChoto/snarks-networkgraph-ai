@@ -5,6 +5,7 @@ import numpy as np
 import threading
 import os
 from datetime import datetime, timedelta
+import time
 from py2neo import Graph, Node, Relationship
 import plotly.graph_objs as go
 import plotly.utils
@@ -17,18 +18,37 @@ warnings.filterwarnings('ignore')
 
 from deep_predictor import DeepPredictor
 from zk_verifier import ZkVerifier
+from config import Config
+from ml_baselines import train_lgbm, train_xgb, predict as ml_predict
+
+try:
+    from pydantic import BaseModel, ValidationError, field_validator
+    PYD_AVAILABLE = True
+except Exception:
+    PYD_AVAILABLE = False
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'
 
 class RiverManagementSystem:
     def __init__(self):
-        try:
-            self.g = Graph("bolt://localhost:7687", auth=("neo4j", "12345678"), name='neo4j')
-            self.neo4j_connected = True
-        except Exception as e:
-            print(f"Neo4j connection failed: {e}")
-            self.neo4j_connected = False
+        # Neo4j via config with retry/backoff
+        cfg = Config()
+        uri = cfg.NEO4J_URI
+        user = cfg.NEO4J_USER
+        pwd = cfg.NEO4J_PASSWORD
+        self.neo4j_connected = False
+        self.g = None
+        for attempt in range(3):
+            try:
+                self.g = Graph(uri, auth=(user, pwd), name=cfg.NEO4J_DATABASE)
+                # simple test
+                self.g.run("RETURN 1 as ok").data()
+                self.neo4j_connected = True
+                break
+            except Exception as e:
+                print(f"Neo4j connection attempt {attempt+1} failed: {e}")
+                time.sleep(1 + attempt)
         
         self.ml_model = None
         self.scaler = None
@@ -466,16 +486,62 @@ def get_water_quality_stats():
     stats = river_system.get_water_quality_stats()
     return jsonify(stats)
 
-@app.route('/api/predict-trade', methods=['POST'])
-def predict_trade():
-    """API endpoint to predict water quality trading"""
-    data = request.get_json()
-    buyer = data.get('buyer', 0)
-    seller = data.get('seller', 0)
-    
-    prediction = river_system.predict_water_quality_trade(buyer, seller)
-    model_type = 'deep' if getattr(river_system, 'deep_predictor', None) is not None else 'rf'
-    return jsonify({'prediction': prediction, 'model': model_type})
+@app.route('/api/predict', methods=['POST'])
+def predict_unified():
+    data = request.get_json() or {}
+    buyer = data.get('buyer')
+    seller = data.get('seller')
+    model = data.get('model', 'deep')
+
+    # Validate
+    if PYD_AVAILABLE:
+        class Req(BaseModel):
+            buyer: int
+            seller: int
+            model: str = 'deep'
+            @field_validator('buyer','seller')
+            @classmethod
+            def non_negative(cls, v):
+                if v is None or int(v) < 0:
+                    raise ValueError('must be non-negative int')
+                return int(v)
+        try:
+            req = Req(buyer=buyer, seller=seller, model=model)
+            buyer, seller, model = req.buyer, req.seller, req.model
+        except ValidationError as e:
+            return jsonify({'status':'error','errors': json.loads(e.json())}), 400
+    else:
+        if buyer is None or seller is None:
+            return jsonify({'status':'error','message':'buyer and seller required'}), 400
+        buyer = int(buyer); seller = int(seller)
+
+    if model == 'deep':
+        pred = river_system.predict_water_quality_trade(buyer, seller)
+        return jsonify({'prediction': pred, 'model': 'deep'})
+    elif model in ('lgbm','xgb'):
+        topo = Config.TOPOLOGY_FILE if hasattr(Config, 'TOPOLOGY_FILE') else '河流拓扑结构.xlsx'
+        res = ml_predict(model, buyer, seller, topo)
+        if 'error' in res:
+            return jsonify({'status':'error','message':res['error']}), 400
+        res['model'] = model
+        return jsonify(res)
+    else:
+        return jsonify({'status':'error','message':'unknown model'}), 400
+
+@app.route('/api/train-ml', methods=['POST'])
+def train_ml():
+    payload = request.get_json() or {}
+    model = payload.get('model','lgbm')
+    topo = Config.TOPOLOGY_FILE if hasattr(Config, 'TOPOLOGY_FILE') else '河流拓扑结构.xlsx'
+    if model == 'lgbm':
+        out = train_lgbm('train_tradedata.csv', topology_xlsx=topo)
+    elif model == 'xgb':
+        out = train_xgb('train_tradedata.csv', topology_xlsx=topo)
+    else:
+        return jsonify({'status':'error','message':'unknown model'}), 400
+    if 'error' in out:
+        return jsonify({'status':'error','message':out['error']}), 400
+    return jsonify({'status':'ok','result': out})
 
 @app.route('/api/train-deep', methods=['POST'])
 def train_deep():

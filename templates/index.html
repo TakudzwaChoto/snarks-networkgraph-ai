@@ -349,14 +349,42 @@
                                         <input type="number" class="form-control" id="seller-segment" min="1" max="160" value="2">
                                     </div>
                                 </div>
-                                <button class="btn btn-primary w-100" onclick="predictTrade()">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Model</label>
+                                        <select id="model-select" class="form-select">
+                                            <option value="deep" selected>Deep</option>
+                                            <option value="lgbm">LightGBM</option>
+                                            <option value="xgb">XGBoost</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <button class="btn btn-primary w-100" onclick="predictTradeUnified()">
                                     <i class="fas fa-calculator me-2"></i>
                                     Predict Trade Amount
                                 </button>
                                 <div class="mt-3">
                                     <div class="alert alert-info" id="prediction-result" style="display: none;">
                                         <strong>Predicted Trade Amount:</strong> <span id="predicted-amount">0</span> WEC units
+                                        <div class="small text-muted">Model: <span id="model-type">-</span></div>
                                     </div>
+                                </div>
+                                <hr/>
+                                <div class="row g-2">
+                                    <div class="col-md-6 d-grid">
+                                        <button class="btn btn-secondary" onclick="trainDeepModel()"><i class="fas fa-rotate me-2"></i> Retrain Deep</button>
+                                    </div>
+                                    <div class="col-md-3 d-grid">
+                                        <button class="btn btn-outline-secondary" onclick="trainML('lgbm')">Train LGBM</button>
+                                    </div>
+                                    <div class="col-md-3 d-grid">
+                                        <button class="btn btn-outline-secondary" onclick="trainML('xgb')">Train XGB</button>
+                                    </div>
+                                </div>
+                                <div class="mt-3">
+                                    <h6>Evaluation</h6>
+                                    <div id="eval-metrics"></div>
+                                    <div id="fi-chart" style="height:240px;"></div>
                                 </div>
                             </div>
                         </div>
@@ -847,26 +875,76 @@ function showFullGraph() {
                 const seller = document.getElementById('seller-segment').value;
                 const resultDiv = document.getElementById('prediction-result');
                 const amountSpan = document.getElementById('predicted-amount');
-                
-                if (!buyer || !seller) {
-                    alert('Please enter both buyer and seller segment numbers');
-                    return;
-                }
-                
+                const modelSpan = document.getElementById('model-type');
                 try {
-                    const response = await axios.post('/api/predict-trade', {
-                        buyer: parseInt(buyer),
-                        seller: parseInt(seller)
+                    const response = await fetch('/api/predict-trade', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ buyer: Number(buyer), seller: Number(seller) })
                     });
-                    
-                    const prediction = response.data.prediction;
-                    amountSpan.textContent = prediction;
+                    const data = await response.json();
+                    amountSpan.textContent = data.prediction;
+                    modelSpan.textContent = data.model || 'unknown';
                     resultDiv.style.display = 'block';
                 } catch (error) {
                     console.error('Error predicting trade:', error);
                     alert('Error predicting trade amount');
                 }
             }
+
+            async function trainDeepModel() {
+                try {
+                    const btns = document.querySelectorAll('button');
+                    btns.forEach(b => b.disabled = true);
+                    const res = await fetch('/api/train-deep', { method: 'POST' });
+                    const payload = await res.json();
+                    btns.forEach(b => b.disabled = false);
+                    if (payload.status !== 'ok') {
+                        alert('Training failed: ' + (payload.message || 'unknown error'));
+                        return;
+                    }
+                    renderEvalMetrics(payload.metrics);
+                    await loadEvalAndFI();
+                } catch (e) {
+                    console.error('train error', e);
+                    alert('Training error');
+                }
+            }
+
+            function renderEvalMetrics(m) {
+                if (!m) return;
+                const html = `
+                  <table class="table table-sm">
+                    <tr><th>MAE</th><td>${m.mae}</td><th>RMSE</th><td>${m.rmse}</td></tr>
+                    <tr><th>R2</th><td>${m.r2}</td><th>Accuracy</th><td>${m.accuracy}</td></tr>
+                    <tr><th>Precision</th><td>${m.precision}</td><th>Recall</th><td>${m.recall}</td></tr>
+                    <tr><th>F1</th><td>${m.f1}</td><td></td><td></td></tr>
+                  </table>`;
+                document.getElementById('eval-metrics').innerHTML = html;
+            }
+
+            async function loadEvalAndFI() {
+                try {
+                    const [evalRes, fiRes] = await Promise.all([
+                        fetch('/api/evaluate-deep').then(r => r.json()),
+                        fetch('/api/feature-importance').then(r => r.json())
+                    ]);
+                    if (evalRes.status === 'ok') {
+                        renderEvalMetrics(evalRes.metrics);
+                    }
+                    if (fiRes.status === 'ok') {
+                        const imp = fiRes.result.importances || [];
+                        const x = imp.map(d => d.feature);
+                        const y = imp.map(d => d.delta_rmse);
+                        Plotly.react('fi-chart', [{x, y, type: 'bar'}], {title: 'Feature Importance (ΔRMSE)'}, {displayModeBar:false});
+                    }
+                } catch (e) {
+                    console.log('eval/fi error', e);
+                }
+            }
+
+            // initial loads
+            loadEvalAndFI();
 
             async function loadZkMetrics() {
               try {
@@ -944,6 +1022,38 @@ function showFullGraph() {
         createNetwork();
     }
 }
+
+            async function predictTradeUnified() {
+                const buyer = Number(document.getElementById('buyer-segment').value);
+                const seller = Number(document.getElementById('seller-segment').value);
+                const modelSel = document.getElementById('model-select').value;
+                const resultDiv = document.getElementById('prediction-result');
+                const amountSpan = document.getElementById('predicted-amount');
+                const modelSpan = document.getElementById('model-type');
+                try {
+                    const response = await fetch('/api/predict', {
+                        method: 'POST', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({buyer, seller, model: modelSel})
+                    });
+                    const data = await response.json();
+                    if (data.status === 'error') throw new Error(data.message || 'predict error');
+                    amountSpan.textContent = data.prediction;
+                    modelSpan.textContent = data.model || modelSel;
+                    resultDiv.style.display = 'block';
+                } catch (e) {
+                    alert('Predict failed: ' + e.message);
+                }
+            }
+
+            async function trainML(model) {
+                try {
+                    const res = await fetch('/api/train-ml', {method:'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({model})});
+                    const payload = await res.json();
+                    if (payload.status !== 'ok') { alert('Train ' + model + ' failed: ' + (payload.message||'')); return; }
+                    loadEvalAndFI();
+                    alert('Trained ' + model);
+                } catch (e) { alert('Train error: ' + e.message); }
+            }
         </script>
     </body>
     </html>
