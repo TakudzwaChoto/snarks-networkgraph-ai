@@ -1,0 +1,39 @@
+Neo4j connection attempt 1 failed: Cannot open connection to ConnectionProfile('bolt://localhost:7687')
+Neo4j connection attempt 2 failed: Cannot open connection to ConnectionProfile('bolt://localhost:7687')
+Neo4j connection attempt 3 failed: Cannot open connection to ConnectionProfile('bolt://localhost:7687')
+Loaded existing ML model
+Deep predictor ready
+zk verifier ready
+============================================================
+🌊 River Water Quality Management System
+============================================================
+Configuration: default
+Debug Mode: True
+Neo4j URI: bolt://localhost:7687
+Host: 0.0.0.0
+Port: 5000
+============================================================
+❌ Neo4j connection: FAILED
+   Please ensure Neo4j is running and accessible
+   Default credentials: neo4j/12345678
+✅ Machine Learning model: LOADED
+============================================================
+🚀 Starting Flask application...
+📱 Access the application at: http://0.0.0.0:5000
+============================================================
+ * Serving Flask app 'app'
+ * Debug mode: on
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5010
+ * Running on http://172.30.0.2:5010
+[33mPress CTRL+C to quit[0m
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 718-103-952
+127.0.0.1 - - [16/Aug/2025 12:15:14] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [16/Aug/2025 12:15:19] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [16/Aug/2025 12:15:23] "POST /api/predict HTTP/1.1" 200 -
+127.0.0.1 - - [16/Aug/2025 12:15:25] "GET /api/graph-data HTTP/1.1" 200 -
+127.0.0.1 - - [16/Aug/2025 12:15:29] "GET /api/water-quality-stats HTTP/1.1" 200 -
+127.0.0.1 - - [16/Aug/2025 12:15:29] "GET /api/water-quality-alerts?threshold=1.0 HTTP/1.1" 200 -

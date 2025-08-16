@@ -17,6 +17,9 @@ try:
     TORCH_AVAILABLE = True
 except Exception:
     TORCH_AVAILABLE = False
+    torch = None  # type: ignore
+    nn = None     # type: ignore
+    optim = None  # type: ignore
 
 
 def _build_features(df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, int]:
@@ -45,36 +48,39 @@ def _build_features(df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, int]:
     return numeric_features, target, max_segment_id
 
 
-class _TorchRegressor(nn.Module):
-    def __init__(self, num_segments: int, numeric_dim: int):
-        super().__init__()
-        embed_dim = 16
-        hidden = 64
+if TORCH_AVAILABLE:
+    class _TorchRegressor(nn.Module):
+        def __init__(self, num_segments: int, numeric_dim: int):
+            super().__init__()
+            embed_dim = 16
+            hidden = 64
 
-        self.buyer_emb = nn.Embedding(num_embeddings=num_segments + 1, embedding_dim=embed_dim)
-        self.seller_emb = nn.Embedding(num_embeddings=num_segments + 1, embedding_dim=embed_dim)
+            self.buyer_emb = nn.Embedding(num_embeddings=num_segments + 1, embedding_dim=embed_dim)
+            self.seller_emb = nn.Embedding(num_embeddings=num_segments + 1, embedding_dim=embed_dim)
 
-        self.numeric_bn = nn.BatchNorm1d(numeric_dim)
+            self.numeric_bn = nn.BatchNorm1d(numeric_dim)
 
-        self.backbone = nn.Sequential(
-            nn.Linear(embed_dim * 2 + numeric_dim, hidden),
-            nn.GELU(),
-            nn.Dropout(0.2),
-            nn.Linear(hidden, hidden),
-            nn.GELU(),
-            nn.Dropout(0.2),
-            nn.Linear(hidden, 1),
-        )
+            self.backbone = nn.Sequential(
+                nn.Linear(embed_dim * 2 + numeric_dim, hidden),
+                nn.GELU(),
+                nn.Dropout(0.2),
+                nn.Linear(hidden, hidden),
+                nn.GELU(),
+                nn.Dropout(0.2),
+                nn.Linear(hidden, 1),
+            )
 
-    def forward(self, buyer_ids: torch.Tensor, seller_ids: torch.Tensor, numeric: torch.Tensor) -> torch.Tensor:
-        be = self.buyer_emb(buyer_ids)
-        se = self.seller_emb(seller_ids)
-        if numeric.ndim == 1:
-            numeric = numeric.unsqueeze(1)
-        numeric = self.numeric_bn(numeric)
-        x = torch.cat([be, se, numeric], dim=1)
-        out = self.backbone(x)
-        return out.squeeze(1)
+        def forward(self, buyer_ids: torch.Tensor, seller_ids: torch.Tensor, numeric: torch.Tensor) -> torch.Tensor:
+            be = self.buyer_emb(buyer_ids)
+            se = self.seller_emb(seller_ids)
+            if numeric.ndim == 1:
+                numeric = numeric.unsqueeze(1)
+            numeric = self.numeric_bn(numeric)
+            x = torch.cat([be, se, numeric], dim=1)
+            out = self.backbone(x)
+            return out.squeeze(1)
+else:
+    _TorchRegressor = None  # type: ignore
 
 
 class DeepPredictor:

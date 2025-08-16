@@ -431,44 +431,8 @@ def health_check():
 def get_graph_data():
     """API endpoint to get graph data"""
     try:
-        # Simple test query
-        count_query = "MATCH (n) RETURN count(n) as node_count"
-        count_result = river_system.g.run(count_query).data()
-        node_count = count_result[0]['node_count'] if count_result else 0
-        
-        if node_count == 0:
-            return jsonify({"nodes": [], "relationships": []})
-        
-        # Get all nodes
-        nodes_query = "MATCH (n) RETURN id(n) AS id, labels(n)[0] AS label, properties(n) AS properties LIMIT 100"
-        nodes = river_system.g.run(nodes_query).data()
-        
-        # Get all relationships
-        rels_query = "MATCH ()-[r]->() RETURN id(startNode(r)) AS source, id(endNode(r)) AS target, type(r) AS type LIMIT 200"
-        relationships = river_system.g.run(rels_query).data()
-        
-        # Format nodes
-        nodes_list = []
-        for node in nodes:
-            nodes_list.append({
-                "id": str(node["id"]),
-                "label": node["label"],
-                "color": "#3498db",
-                "size": 10,
-                "properties": node["properties"]
-            })
-        
-        # Format relationships
-        relationships_list = []
-        for rel in relationships:
-            relationships_list.append({
-                "source": str(rel["source"]),
-                "target": str(rel["target"]),
-                "type": rel["type"]
-            })
-        
-        return jsonify({"nodes": nodes_list, "relationships": relationships_list})
-        
+        data = river_system.get_graph_data()
+        return jsonify(data)
     except Exception as e:
         print(f"Error in get_graph_data: {e}")
         return jsonify({"nodes": [], "relationships": []})
