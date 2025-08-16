@@ -22,6 +22,92 @@ A Flask-based web application for river network management that integrates a Neo
 
 ---
 
+## Problem and Objectives
+
+- **What problem is solved**: Build a trustworthy, privacy-preserving, and explainable water-quality monitoring system that scales across many river sites.
+  - **Privacy**: Sites keep raw sensor data local; only model updates leave the site (federated learning).
+  - **Tamper-evidence**: Every critical action is recorded in a hash-chained audit log; any change is detectable.
+  - **Verifiable correctness**: Zero-knowledge proofs allow checking properties of updates/aggregation without revealing inputs.
+  - **Interpretability**: A knowledge graph encodes river topology and monitoring semantics to derive meaningful, explainable features.
+  - **Practicality**: A web app with REST APIs, dashboards, and optional Docker/compose.
+
+## System Architecture and Data Flow
+
+```text
++-------------------+        +----------------------+        +------------------+
+|  Sensor Sites /   |        |  Federated Aggregator |      |   Global Model   |
+|  FL Clients       +------->+  (FedAvg, clip, log)  +----->+  & Prediction API |
++-------------------+        +----------------------+        +------------------+
+          |                            |   \
+          | local updates + (optional) |    \  append
+          v  zk proofs                 v     \  events
++-------------------+        +----------------------+         
+| Hash-Chained      |<-------+  ZK Verifier (snarkjs) |
+| Audit Log (JSONL) |        +----------------------+         
++-------------------+                                        
+          ^                                                     
+          |                                                     
+          |                                +------------------+
+          |                                |  Web UI          |
+          |                                |  Dashboards      |
+          |                                +------------------+
+          |                                             ^
+          |                                             |
++-------------------+        +----------------------+   |
+| Neo4j Knowledge   |<-------+  Flask REST API      +---+
+| Graph (topology)  |        |  (graph, stats, ML)  |
++-------------------+        +----------------------+
+```
+
+- **Core components**: Web UI, REST API (Flask), Neo4j KG, Deep/ML baselines, Federated simulator, zk verifier, Audit log.
+- **Data inputs**: Excel files for topology and monitoring, CSV for training.
+- **Outputs**: Predictions, stats/alerts, audit trail, trained artifacts in `models/`.
+
+## End-to-End Workflows
+
+### A. Data Onboarding & Knowledge Graph
+
+```text
+User -> /initialize-database -> Read XLSX -> Create Nodes/Edges in Neo4j ->
+Bind MonitoringPoints -> Record audit event (db.init.*) -> UI/Debug pages
+```
+
+- Place XLSX files; start the app; open `/initialize-database`.
+- Inspect with `/test-database` or `/debug-graph`.
+
+### B. Prediction and Alerts
+
+```text
+UI/API (/api/predict) -> Deep model (fallback RF) OR baseline (LGBM/XGB) ->
+Record audit (predict.*) -> Return JSON -> UI renders -> Optional alerts via
+/api/water-quality-alerts (threshold)
+```
+
+- Deep model is default (`model=deep`); baselines require prior training via `/api/train-ml`.
+
+### C. Federated Learning Round (FedAvg)
+
+```text
+/api/fl/init -> partition training data -> broadcast global weights
+/api/fl/round -> each client: local SGD w/grad-clip -> send delta hash ->
+server: weighted aggregate -> update global -> record audit (fl.client.*, fl.round.end)
+/api/fl/status -> metrics + audit head
+```
+
+- Simulator in `federated.py` (optional) demonstrates the FL pipeline and emits audit events.
+
+### D. zk Verification & Audit
+
+```text
+Client/Server -> produce proof (Groth16) over constraint (e.g., ||Δ|| <= C)
+POST /api/zk/verify { proof, publicSignals } -> snarkjs verify ->
+Record audit (zk.verify) + metrics
+```
+
+- Verifier readiness at `/api/zk/metrics`.
+
+---
+
 ## Prerequisites
 
 - Python 3.9+
