@@ -21,6 +21,7 @@ from zk_verifier import ZkVerifier
 from audit_log import AuditLog
 from config import Config
 from ml_baselines import train_lgbm, train_xgb, predict as ml_predict
+from federated import FederatedSimulator, FLConfig
 
 try:
     from pydantic import BaseModel, ValidationError, field_validator
@@ -608,6 +609,60 @@ def zk_metrics():
         return jsonify({'status': 'ok', 'stats': stats})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/fl/init', methods=['POST'])
+def fl_init():
+    try:
+        payload = request.get_json() or {}
+        cfg = FLConfig(
+            n_clients=int(payload.get('n_clients', 5)),
+            client_fraction=float(payload.get('client_fraction', 1.0)),
+            local_epochs=int(payload.get('local_epochs', 1)),
+            batch_size=int(payload.get('batch_size', 64)),
+            lr=float(payload.get('lr', 1e-2)),
+            clip_norm=float(payload.get('clip_norm', 1.0)),
+            seed=int(payload.get('seed', 42)),
+        )
+        river_system.fl = FederatedSimulator(river_system.audit)
+        res = river_system.fl.init(cfg)
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({'status':'error','message': str(e)}), 400
+
+
+@app.route('/api/fl/round', methods=['POST'])
+def fl_round():
+    try:
+        if getattr(river_system, 'fl', None) is None:
+            return jsonify({'status':'error','message':'fl not initialized'}), 400
+        res = river_system.fl.run_round()
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({'status':'error','message': str(e)}), 400
+
+
+@app.route('/api/fl/status')
+def fl_status():
+    try:
+        if getattr(river_system, 'fl', None) is None:
+            return jsonify({'status':'error','message':'fl not initialized'}), 400
+        return jsonify(river_system.fl.status())
+    except Exception as e:
+        return jsonify({'status':'error','message': str(e)}), 400
+
+
+@app.route('/api/fl/predict')
+def fl_predict():
+    try:
+        if getattr(river_system, 'fl', None) is None:
+            return jsonify({'status':'error','message':'fl not initialized'}), 400
+        buyer = int(request.args.get('buyer', 1))
+        seller = int(request.args.get('seller', 2))
+        yhat = river_system.fl.predict(buyer, seller)
+        river_system.audit.append('fl.predict', {'buyer': buyer, 'seller': seller, 'prediction': yhat})
+        return jsonify({'prediction': yhat})
+    except Exception as e:
+        return jsonify({'status':'error','message': str(e)}), 400
 
 @app.route('/initialize-database')
 def initialize_database():
