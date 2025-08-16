@@ -242,6 +242,15 @@ curl -s -X POST http://localhost:5000/api/train-ml \
   - Can incorporate additional graph-based features derived from topology (requires `networkx` and presence of topology file)
   - Train via `/api/train-ml` and predict via `/api/predict` with `model` set to `lgbm` or `xgb`
 
+- Federated simulator (`federated.py`) — optional
+  - Implements minimal FedAvg over engineered features with gradient clipping
+  - Emits audit events for init, client updates, round aggregation, and predictions
+  - REST endpoints:
+    - POST `/api/fl/init` { n_clients, client_fraction, local_epochs, batch_size, lr, clip_norm, seed }
+    - POST `/api/fl/round` — run one FL round
+    - GET `/api/fl/status` — current round, metrics, and audit head
+    - GET `/api/fl/predict?buyer=..&seller=..` — predict with FL model
+
 - Classic fallback in `app.py`
   - A simple RandomForestRegressor is kept as a fallback for prediction if the deep model is unavailable
 
@@ -250,6 +259,21 @@ curl -s -X POST http://localhost:5000/api/train-ml \
 ## Nginx (optional)
 
 `nginx.conf` is provided for reverse proxying to the Flask app (used by Compose service `nginx`). Adjust SSL settings if you enable HTTPS.
+
+---
+
+## Audit Logging
+
+A tamper-evident, hash-chained audit log records important events.
+
+- Module: `audit_log.py`
+- Files: `logs/audit_log.jsonl` (entries), `logs/audit_head.txt` (current head)
+- App events recorded: system startup, model init/training, predictions, DB init/test data, zk verification, FL rounds and updates.
+
+Example head:
+```bash
+cat logs/audit_head.txt
+```
 
 ---
 
