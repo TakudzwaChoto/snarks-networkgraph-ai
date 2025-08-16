@@ -1,229 +1,404 @@
- # River Water Quality Management System
+# River Water Quality Management System
 
-A comprehensive web application for managing river water quality using Neo4j graph database and machine learning predictions. This system provides real-time monitoring, predictive analytics, and interactive visualizations for river network topology and water quality parameters.
+A Flask-based web application for river network management that integrates a Neo4j graph database with interactive dashboards and machine learning predictions for water-quality trading (WEC). The system includes:
 
-## 🌊 Features
+- Graph-backed modeling of river topology and monitoring points
+- An interactive UI (index + analytics dashboard)
+- A unified prediction API with a deep model (PyTorch/Sklearn) and optional baseline models (LightGBM/XGBoost)
+- Utilities to initialize/test the Neo4j database
+- Optional zkSNARK proof verification endpoints
 
-### Core Functionality
-- **Neo4j Graph Database Integration**: Advanced graph database for complex river topology relationships
-- **Machine Learning Predictions**: AI-powered water quality trading predictions using Random Forest
-- **Real-time Monitoring**: Live monitoring of water quality parameters and alerts
-- **Interactive Network Visualization**: Dynamic graph visualization of river segments and connections
-- **Water Quality Alerts**: Automated alert system for threshold violations
-- **Trading Analysis**: Water quality trading simulation and optimization
+---
 
-### Technical Features
-- **Modern Web UI**: Responsive design with Bootstrap 5 and custom CSS
-- **Interactive Charts**: Plotly.js integration for advanced data visualization
-- **RESTful API**: Clean API endpoints for data access and predictions
-- **Real-time Updates**: Automatic data refresh and live monitoring
-- **Mobile Responsive**: Optimized for desktop and mobile devices
+## Features
 
-## 🏗️ System Architecture
+- Neo4j graph database integration for river topology and monitoring points
+- Interactive network and analytics dashboards (Plotly, custom JS/CSS)
+- Unified prediction API
+  - Deep predictor (PyTorch if available, otherwise Sklearn MLP)
+  - Optional baselines: LightGBM and XGBoost (install separately)
+- Database utilities: initialize dataset, add sample data, health checks
+- Optional zkSNARK verification endpoints (requires `snarkjs` and a verifier key)
 
+---
+
+## Problem and Objectives
+
+- **What problem is solved**: Build a trustworthy, privacy-preserving, and explainable water-quality monitoring system that scales across many river sites.
+  - **Privacy**: Sites keep raw sensor data local; only model updates leave the site (federated learning).
+  - **Tamper-evidence**: Every critical action is recorded in a hash-chained audit log; any change is detectable.
+  - **Verifiable correctness**: Zero-knowledge proofs allow checking properties of updates/aggregation without revealing inputs.
+  - **Interpretability**: A knowledge graph encodes river topology and monitoring semantics to derive meaningful, explainable features.
+  - **Practicality**: A web app with REST APIs, dashboards, and optional Docker/compose.
+
+## System Architecture and Data Flow
+
+```text
++-------------------+        +----------------------+        +------------------+
+|  Sensor Sites /   |        |  Federated Aggregator |      |   Global Model   |
+|  FL Clients       +------->+  (FedAvg, clip, log)  +----->+  & Prediction API |
++-------------------+        +----------------------+        +------------------+
+          |                            |   \
+          | local updates + (optional) |    \  append
+          v  zk proofs                 v     \  events
++-------------------+        +----------------------+         
+| Hash-Chained      |<-------+  ZK Verifier (snarkjs) |
+| Audit Log (JSONL) |        +----------------------+         
++-------------------+                                        
+          ^                                                     
+          |                                                     
+          |                                +------------------+
+          |                                |  Web UI          |
+          |                                |  Dashboards      |
+          |                                +------------------+
+          |                                             ^
+          |                                             |
++-------------------+        +----------------------+   |
+| Neo4j Knowledge   |<-------+  Flask REST API      +---+
+| Graph (topology)  |        |  (graph, stats, ML)  |
++-------------------+        +----------------------+
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Flask Web     │    │   Neo4j Graph   │    │   Machine       │
-│   Application   │◄──►│   Database      │    │   Learning      │
-│                 │    │                 │    │   Model         │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         ▼                       ▼                       ▼
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Interactive   │    │   River         │    │   Prediction    │
-│   Dashboard     │    │   Topology      │    │   Engine        │
-│                 │    │   Data          │    │                 │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
+
+- **Core components**: Web UI, REST API (Flask), Neo4j KG, Deep/ML baselines, Federated simulator, zk verifier, Audit log.
+- **Data inputs**: Excel files for topology and monitoring, CSV for training.
+- **Outputs**: Predictions, stats/alerts, audit trail, trained artifacts in `models/`.
+
+## End-to-End Workflows
+
+### A. Data Onboarding & Knowledge Graph
+
+```text
+User -> /initialize-database -> Read XLSX -> Create Nodes/Edges in Neo4j ->
+Bind MonitoringPoints -> Record audit event (db.init.*) -> UI/Debug pages
 ```
 
-## 📋 Prerequisites
+- Place XLSX files; start the app; open `/initialize-database`.
+- Inspect with `/test-database` or `/debug-graph`.
 
-Before running this application, ensure you have:
+### B. Prediction and Alerts
 
-1. **Python 3.8+** installed
-2. **Neo4j Database** running locally or remotely
-3. **Required Excel files** in the project directory:
-   - `河流拓扑结构.xlsx` (River Topology Structure)
-   - `河道氨氮统计数据--环境容量.xlsx` (Ammonia Nitrogen Statistics)
+```text
+UI/API (/api/predict) -> Deep model (fallback RF) OR baseline (LGBM/XGB) ->
+Record audit (predict.*) -> Return JSON -> UI renders -> Optional alerts via
+/api/water-quality-alerts (threshold)
+```
 
-## 🚀 Installation & Setup
+- Deep model is default (`model=deep`); baselines require prior training via `/api/train-ml`.
 
-### 1. Clone the Repository
+### C. Federated Learning Round (FedAvg)
+
+```text
+/api/fl/init -> partition training data -> broadcast global weights
+/api/fl/round -> each client: local SGD w/grad-clip -> send delta hash ->
+server: weighted aggregate -> update global -> record audit (fl.client.*, fl.round.end)
+/api/fl/status -> metrics + audit head
+```
+
+- Simulator in `federated.py` (optional) demonstrates the FL pipeline and emits audit events.
+
+### D. zk Verification & Audit
+
+```text
+Client/Server -> produce proof (Groth16) over constraint (e.g., ||Δ|| <= C)
+POST /api/zk/verify { proof, publicSignals } -> snarkjs verify ->
+Record audit (zk.verify) + metrics
+```
+
+- Verifier readiness at `/api/zk/metrics`.
+
+---
+
+## Prerequisites
+
+- Python 3.9+
+- Neo4j running locally or via Docker
+- Required data files in project root (or configure paths via env vars):
+  - `河流拓扑结构.xlsx` (river topology)
+  - `河道氨氮统计数据--环境容量.xlsx` (ammonia nitrogen stats)
+- Optional for baselines/graph features:
+  - `lightgbm`, `xgboost`, `networkx`
+- Optional for zk verification:
+  - Node.js tool `snarkjs` available on PATH and `zk/verifier_key.json`
+
+---
+
+## Installation (Local)
+
 ```bash
+# Clone
 git clone <repository-url>
-cd river-management-system
-```
+cd <repo>
 
-### 2. Install Dependencies
-```bash
+# (Recommended) Create venv
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
+
+# Install core dependencies
 pip install -r requirements.txt
+
+# Optional extras, if you plan to use baseline models and graph features
+pip install lightgbm xgboost networkx
 ```
 
-### 3. Configure Neo4j
-1. Install Neo4j Desktop or Neo4j Community Edition
-2. Create a new database
-3. Set username: `neo4j` and password: `12345678`
-4. Start the Neo4j service
+Place data files at the project root or set env vars (see Configuration):
+- `河流拓扑结构.xlsx`
+- `河道氨氮统计数据--环境容量.xlsx`
+- `train_tradedata.csv` (for ML training; included in repo)
 
-### 4. Prepare Data Files
-Ensure the following Excel files are in the project root:
-- `河流拓扑结构.xlsx` - Contains river segment topology data
-- `河道氨氮统计数据--环境容量.xlsx` - Contains water quality statistics
+---
 
-### 5. Run the Application
+## Run (Local)
+
 ```bash
+# Preferred: uses configuration from config.py
+python run.py
+
+# Alternate dev mode
 python app.py
+
+# Production example (if desired)
+# gunicorn -w 2 -b 0.0.0.0:5000 app:app
 ```
 
-The application will be available at `http://localhost:5000`
+App will be available at `http://localhost:5000`.
 
-## 📊 Data Structure
+---
 
-### River Topology Data (`河流拓扑结构.xlsx`)
-- **Subbasin**: River segment identifier
-- **FROM_NODE**: Source node ID
-- **TO_NODE**: Target node ID
-- **FLOW_OUTcms**: Flow rate in cubic meters per second
-- **AreaC**: Catchment area
-- **Len2**: River length
-- **Slo2**: River slope
-- **Wid2**: River width
-- **Dep2**: River depth
+## Docker & Compose
 
-### Water Quality Data (`河道氨氮统计数据--环境容量.xlsx`)
-- **RCH**: River segment identifier (matches Subbasin)
-- **Cs**: Ammonia nitrogen concentration
-- **K**: Record identifier
+This repo includes a `Dockerfile` and `docker-compose.yml` with services for Neo4j, the Flask app, and optional Nginx.
 
-## 🔧 API Endpoints
-
-### Graph Data
-- `GET /api/graph-data` - Retrieve river network graph data
-- `GET /api/water-quality-stats` - Get water quality statistics
-- `GET /api/water-quality-alerts?threshold=1.0` - Get water quality alerts
-
-### Predictions
-- `POST /api/predict-trade` - Predict water quality trading amount
-  ```json
-  {
-    "buyer": 1,
-    "seller": 2
-  }
-  ```
-
-### Database Management
-- `GET /initialize-database` - Initialize Neo4j database with river data
-
-## 🎯 Usage Guide
-
-### 1. Initial Setup
-1. Start the application
-2. Click "Initialize Database" to load river data into Neo4j
-3. Wait for the database initialization to complete
-
-### 2. Dashboard Overview
-- **Statistics Cards**: View key metrics like total segments, connections, and alerts
-- **Network Graph**: Interactive visualization of river topology
-- **Water Quality Trends**: Historical data and trends
-- **Real-time Alerts**: Current water quality violations
-
-### 3. Making Predictions
-1. Navigate to the Predictions section
-2. Enter buyer and seller segment numbers (1-160)
-3. Click "Predict Trade Amount" to get ML predictions
-4. View predicted water quality trading amount
-
-### 4. Monitoring Alerts
-1. Set alert threshold for ammonia nitrogen concentration
-2. Click "Check Alerts" to view current violations
-3. Monitor real-time updates in the dashboard
-
-## 🧠 Machine Learning Model
-
-### Model Details
-- **Algorithm**: Random Forest Regressor
-- **Features**: 
-  - Buyer and seller segment IDs
-  - Distance between segments
-  - Derived segment characteristics
-- **Target**: Water quality trading amount (WEC units)
-- **Training Data**: Historical trading data from `train_tradedata.csv`
-
-### Model Performance
-- **Accuracy**: ~87.5% (based on historical data)
-- **Features**: 5 engineered features
-- **Training**: Automatic retraining when new data is available
-
-## 🎨 UI Components
-
-### Main Dashboard
-- **Hero Section**: System overview and quick actions
-- **Statistics Cards**: Key performance indicators
-- **Network Visualization**: Interactive river topology graph
-- **Prediction Interface**: ML-powered trading predictions
-- **Alert System**: Real-time water quality monitoring
-
-### Analytics Dashboard
-- **Trend Charts**: Water quality over time
-- **Distribution Analysis**: Segment quality distribution
-- **Trading Analysis**: Volume and patterns
-- **Performance Metrics**: System performance indicators
-- **Top Segments**: Best performing river segments
-
-## 🔒 Security Considerations
-
-- **Database Authentication**: Secure Neo4j connection with credentials
-- **Input Validation**: All user inputs are validated
-- **Error Handling**: Comprehensive error handling and logging
-- **Data Sanitization**: All data is properly sanitized before processing
-
-## 🚨 Troubleshooting
-
-### Common Issues
-
-1. **Neo4j Connection Failed**
-   - Ensure Neo4j is running on `localhost:7687`
-   - Verify username: `neo4j` and password: `12345678`
-   - Check firewall settings
-
-2. **Missing Data Files**
-   - Ensure Excel files are in the project root directory
-   - Verify file names match exactly
-   - Check file permissions
-
-3. **ML Model Training Issues**
-   - Ensure `train_tradedata.csv` exists
-   - Check Python dependencies are installed
-   - Verify sufficient memory for model training
-
-4. **Graph Visualization Issues**
-   - Clear browser cache
-   - Check JavaScript console for errors
-   - Ensure internet connection for CDN resources
-
-### Debug Mode
-Run the application in debug mode for detailed error messages:
 ```bash
-export FLASK_ENV=development
-python app.py
+# Build & start all services
+docker compose up -d --build
+
+# View logs
+docker compose logs -f river_app
+
+# Stop
+docker compose down
 ```
 
-## 📈 Performance Optimization
+Ports:
+- App: 5000 (mapped from container)
+- Neo4j: 7474 (HTTP), 7687 (Bolt)
+- Nginx (optional): 80/443
 
-### Database Optimization
-- Index frequently queried properties in Neo4j
-- Use parameterized queries for better performance
-- Implement connection pooling for high-traffic scenarios
+Note: Compose uses defaults for data file paths. If you place data under `./data`, set env vars like `TOPOLOGY_FILE=/app/data/河流拓扑结构.xlsx` and `WATER_QUALITY_FILE=/app/data/河道氨氮统计数据--环境容量.xlsx` in `docker-compose.yml`.
 
-### Application Optimization
-- Enable caching for static data
-- Implement pagination for large datasets
-- Use background tasks for heavy computations
+---
 
-## 🔄 Future Enhancements
+## Configuration
 
-### Planned Features
-- **Real-time Data Streaming**: Live data feeds from monitoring stations
-- **Advanced ML Models**: Deep learning for complex predictions
-- **Mobile App**: Native mobile application
-- **API Docume# Water-quality-prediction-knowledge-graph
+This app reads configuration from environment variables (see `config.py`) and supports `.env` files.
+
+- SECRET_KEY: Flask secret key (default: `your-secret-key-here`)
+- NEO4J_URI: `bolt://localhost:7687` (Compose sets `bolt://neo4j:7687`)
+- NEO4J_USER: `neo4j`
+- NEO4J_PASSWORD: `12345678`
+- NEO4J_DATABASE: `neo4j`
+- FLASK_CONFIG: `development` | `production` | `testing` | `default` (maps to development)
+- FLASK_HOST: `0.0.0.0` (bind address)
+- FLASK_PORT: `5000`
+- DEFAULT_ALERT_THRESHOLD: `1.0`
+- TOPOLOGY_FILE: `河流拓扑结构.xlsx`
+- WATER_QUALITY_FILE: `河道氨氮统计数据--环境容量.xlsx`
+- TRAIN_DATA_FILE: `train_tradedata.csv`
+- TEST_DATA_FILE: `test_tradedata.csv`
+- ML_MODEL_PATH: `river_quality_model.pkl`
+- ML_SCALER_PATH: `river_quality_scaler.pkl`
+- LOG_FILE: `river_system.log`
+
+Example `.env`:
+
+```bash
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=12345678
+FLASK_CONFIG=development
+FLASK_PORT=5000
+TOPOLOGY_FILE=河流拓扑结构.xlsx
+WATER_QUALITY_FILE=河道氨氮统计数据--环境容量.xlsx
+```
+
+---
+
+## Data Files
+
+- River topology (`河流拓扑结构.xlsx`)
+  - Expected columns: `Subbasin`, `FROM_NODE`, `TO_NODE`, `FLOW_OUTcms`, `AreaC`, `Len2`, `Slo2`, `Wid2`, `Dep2`
+- Water quality stats (`河道氨氮统计数据--环境容量.xlsx`)
+  - Expected columns: `RCH`, `Cs`, `K`
+- ML training data: `train_tradedata.csv` with `Buyer`, `Seller`, `Sold_wec`
+
+Additional example files in repo (optional):
+- `河道总氮统计数据--环境容量.xlsx`, `河道总磷统计数据--环境容量.xlsx`
+
+---
+
+## Initialize the Database
+
+1) Start the app and Neo4j
+2) Load data into Neo4j:
+   - Open `http://localhost:5000/initialize-database`
+   - Or use the main page button (Initialize Database)
+3) Verify: `http://localhost:5000/test-database`
+
+You can add demo data via `http://localhost:5000/add-test-data`.
+
+---
+
+## UI
+
+- `/` main dashboard (interactive graph, actions)
+- `/dashboard` analytics dashboard (charts, trends)
+- `/debug-graph` debug page for visualization
+
+---
+
+## REST API
+
+- GET `/health` — service and dependency status
+- GET `/api/graph-data` — graph nodes and relationships (subset)
+- GET `/api/water-quality-stats` — aggregate stats from monitoring points
+- GET `/api/water-quality-alerts?threshold=1.0` — alerts above threshold
+- GET `/initialize-database` — reads Excel files and writes to Neo4j
+- GET `/add-test-data` — inserts sample nodes and relations
+- GET `/test-database` — simple database counters
+
+Prediction and training:
+
+- POST `/api/predict` — unified prediction endpoint
+  - Body (deep model, default):
+    ```json
+    {"buyer": 1, "seller": 2, "model": "deep"}
+    ```
+  - Body (baselines):
+    ```json
+    {"buyer": 1, "seller": 2, "model": "lgbm"}
+    ```
+    Train baseline first (see below). If the model does not exist or dependency is missing, an error is returned.
+
+- POST `/api/train-ml` — train a baseline model and persist under `models/`
+  - Body: `{"model":"lgbm"}` or `{"model":"xgb"}`
+
+- POST `/api/train-deep` — train/retrain the deep predictor; persists under `models/`
+- GET `/api/evaluate-deep` — evaluate deep predictor on training set
+- GET `/api/feature-importance` — permutation-style importance (deep model features)
+
+zkSNARK verification (optional):
+
+- POST `/api/zk/verify`
+  - Body: `{ "proof": {...}, "publicSignals": [...] }`
+  - Requires `snarkjs` on PATH and `zk/verifier_key.json`
+- GET `/api/zk/metrics` — basic verification stats and recent series
+
+Examples:
+
+```bash
+# Health
+curl -s http://localhost:5000/health | jq
+
+# Alerts at threshold 1.2
+curl -s "http://localhost:5000/api/water-quality-alerts?threshold=1.2" | jq
+
+# Deep prediction
+curl -s -X POST http://localhost:5000/api/predict \
+  -H 'Content-Type: application/json' \
+  -d '{"buyer": 10, "seller": 25, "model": "deep"}' | jq
+
+# Train LightGBM (requires lightgbm, networkx if using topology features)
+curl -s -X POST http://localhost:5000/api/train-ml \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"lgbm"}' | jq
+```
+
+---
+
+## Machine Learning
+
+- Deep predictor (`deep_predictor.py`)
+  - Uses PyTorch if available; otherwise falls back to Sklearn `MLPRegressor`
+  - Artifacts: `models/deep_model.pt` or `models/mlp_sklearn.pkl`, plus `models/scaler.pkl`, `models/meta.json`
+  - Trains automatically on first use if no artifacts are present
+  - Features: buyer, seller, |buyer − seller|, buyer % 10, seller % 10, (buyer + seller) % 20
+
+- Baselines (`ml_baselines.py`) — optional
+  - LightGBM or XGBoost (install extras)
+  - Can incorporate additional graph-based features derived from topology (requires `networkx` and presence of topology file)
+  - Train via `/api/train-ml` and predict via `/api/predict` with `model` set to `lgbm` or `xgb`
+
+- Federated simulator (`federated.py`) — optional
+  - Implements minimal FedAvg over engineered features with gradient clipping
+  - Emits audit events for init, client updates, round aggregation, and predictions
+  - REST endpoints:
+    - POST `/api/fl/init` { n_clients, client_fraction, local_epochs, batch_size, lr, clip_norm, seed }
+    - POST `/api/fl/round` — run one FL round
+    - GET `/api/fl/status` — current round, metrics, and audit head
+    - GET `/api/fl/predict?buyer=..&seller=..` — predict with FL model
+
+- Classic fallback in `app.py`
+  - A simple RandomForestRegressor is kept as a fallback for prediction if the deep model is unavailable
+
+---
+
+## Nginx (optional)
+
+`nginx.conf` is provided for reverse proxying to the Flask app (used by Compose service `nginx`). Adjust SSL settings if you enable HTTPS.
+
+---
+
+## Audit Logging
+
+A tamper-evident, hash-chained audit log records important events.
+
+- Module: `audit_log.py`
+- Files: `logs/audit_log.jsonl` (entries), `logs/audit_head.txt` (current head)
+- App events recorded: system startup, model init/training, predictions, DB init/test data, zk verification, FL rounds and updates.
+
+Example head:
+```bash
+cat logs/audit_head.txt
+```
+
+---
+
+## Troubleshooting
+
+- Neo4j connection failed
+  - Ensure Neo4j is running and accessible at `NEO4J_URI`
+  - Default auth: `neo4j/12345678`
+  - For Compose, the app uses `bolt://neo4j:7687`
+
+- Missing data files
+  - Confirm file names and locations
+  - Override paths via `TOPOLOGY_FILE` and `WATER_QUALITY_FILE`
+
+- Baseline training error: dependency not installed
+  - Install `lightgbm`, `xgboost`, and `networkx` (for graph features)
+
+- zk verifier unavailable
+  - Install `snarkjs` and add `zk/verifier_key.json`
+
+- Graph visualization empty
+  - Ensure `/initialize-database` was run and Neo4j is populated
+
+---
+
+## Repository Structure (selected)
+
+```
+app.py                 # Flask app and routes
+run.py                 # Startup wrapper using config.py
+config.py              # Configuration with env-var defaults
+ml_baselines.py        # Optional baseline models (LightGBM/XGBoost)
+deep_predictor.py      # Deep predictor (Torch/Sklearn)
+zk_verifier.py         # Optional zkSNARK verification helpers
+graph_features.py      # Topology-based feature engineering
+models/                # Saved model artifacts
+static/                # CSS/JS assets
+templates/             # HTML templates (index, dashboard, debug)
+Dockerfile             # Container build
+docker-compose.yml     # Neo4j + app (+ optional nginx)
+nginx.conf             # Reverse proxy config
+```

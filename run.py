@@ -52,9 +52,10 @@ def main():
     
     try:
         # Start the Flask application
+        port = int(os.environ.get('PORT', app.config['PORT']))
         app.run(
             host=app.config['HOST'],
-            port=app.config['PORT'],
+            port=port,
             debug=app.config['DEBUG']
         )
     except KeyboardInterrupt:

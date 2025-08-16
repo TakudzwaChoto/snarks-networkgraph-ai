@@ -1,0 +1,27 @@
+Neo4j connection attempt 1 failed: Cannot open connection to ConnectionProfile('bolt://localhost:7687')
+Neo4j connection attempt 2 failed: Cannot open connection to ConnectionProfile('bolt://localhost:7687')
+Neo4j connection attempt 3 failed: Cannot open connection to ConnectionProfile('bolt://localhost:7687')
+Loaded existing ML model
+Deep predictor ready
+zk verifier ready
+============================================================
+🌊 River Water Quality Management System
+============================================================
+Configuration: default
+Debug Mode: True
+Neo4j URI: bolt://localhost:7687
+Host: 0.0.0.0
+Port: 5000
+============================================================
+❌ Neo4j connection: FAILED
+   Please ensure Neo4j is running and accessible
+   Default credentials: neo4j/12345678
+✅ Machine Learning model: LOADED
+============================================================
+🚀 Starting Flask application...
+📱 Access the application at: http://0.0.0.0:5000
+============================================================
+ * Serving Flask app 'app'
+ * Debug mode: on
+Address already in use
+Port 5000 is in use by another program. Either identify and stop that program, or start the server with a different port.

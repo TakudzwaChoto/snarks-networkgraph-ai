@@ -18,8 +18,10 @@ warnings.filterwarnings('ignore')
 
 from deep_predictor import DeepPredictor
 from zk_verifier import ZkVerifier
+from audit_log import AuditLog
 from config import Config
 from ml_baselines import train_lgbm, train_xgb, predict as ml_predict
+from federated import FederatedSimulator, FLConfig
 
 try:
     from pydantic import BaseModel, ValidationError, field_validator
@@ -52,22 +54,28 @@ class RiverManagementSystem:
         
         self.ml_model = None
         self.scaler = None
+        self.audit = AuditLog()
+        self.audit.append('system.start', {'neo4j_connected': self.neo4j_connected})
         self.load_or_train_model()
 
         # New deep predictor
         try:
             self.deep_predictor = DeepPredictor(train_csv='train_tradedata.csv', models_dir='models')
             print("Deep predictor ready")
+            self.audit.append('model.deep.ready', {})
         except Exception as e:
             print(f"Failed to initialize deep predictor: {e}")
+            self.audit.append('model.deep.error', {'error': str(e)})
             self.deep_predictor = None
 
         # zkSNARK verifier
         try:
             self.zk = ZkVerifier()
             print("zk verifier ready")
+            self.audit.append('zk.ready', {'available': self.zk.is_available(), 'configured': self.zk.is_configured()})
         except Exception as e:
             print(f"Failed to init zk verifier: {e}")
+            self.audit.append('zk.error', {'error': str(e)})
             self.zk = None
 
     def load_or_train_model(self):
@@ -431,44 +439,8 @@ def health_check():
 def get_graph_data():
     """API endpoint to get graph data"""
     try:
-        # Simple test query
-        count_query = "MATCH (n) RETURN count(n) as node_count"
-        count_result = river_system.g.run(count_query).data()
-        node_count = count_result[0]['node_count'] if count_result else 0
-        
-        if node_count == 0:
-            return jsonify({"nodes": [], "relationships": []})
-        
-        # Get all nodes
-        nodes_query = "MATCH (n) RETURN id(n) AS id, labels(n)[0] AS label, properties(n) AS properties LIMIT 100"
-        nodes = river_system.g.run(nodes_query).data()
-        
-        # Get all relationships
-        rels_query = "MATCH ()-[r]->() RETURN id(startNode(r)) AS source, id(endNode(r)) AS target, type(r) AS type LIMIT 200"
-        relationships = river_system.g.run(rels_query).data()
-        
-        # Format nodes
-        nodes_list = []
-        for node in nodes:
-            nodes_list.append({
-                "id": str(node["id"]),
-                "label": node["label"],
-                "color": "#3498db",
-                "size": 10,
-                "properties": node["properties"]
-            })
-        
-        # Format relationships
-        relationships_list = []
-        for rel in relationships:
-            relationships_list.append({
-                "source": str(rel["source"]),
-                "target": str(rel["target"]),
-                "type": rel["type"]
-            })
-        
-        return jsonify({"nodes": nodes_list, "relationships": relationships_list})
-        
+        data = river_system.get_graph_data()
+        return jsonify(data)
     except Exception as e:
         print(f"Error in get_graph_data: {e}")
         return jsonify({"nodes": [], "relationships": []})
@@ -517,13 +489,25 @@ def predict_unified():
 
     if model == 'deep':
         pred = river_system.predict_water_quality_trade(buyer, seller)
+        try:
+            river_system.audit.append('predict.deep', {'buyer': buyer, 'seller': seller, 'prediction': pred})
+        except Exception:
+            pass
         return jsonify({'prediction': pred, 'model': 'deep'})
     elif model in ('lgbm','xgb'):
         topo = Config.TOPOLOGY_FILE if hasattr(Config, 'TOPOLOGY_FILE') else '河流拓扑结构.xlsx'
         res = ml_predict(model, buyer, seller, topo)
         if 'error' in res:
+            try:
+                river_system.audit.append('predict.baseline.error', {'model': model, 'buyer': buyer, 'seller': seller, 'error': res['error']})
+            except Exception:
+                pass
             return jsonify({'status':'error','message':res['error']}), 400
         res['model'] = model
+        try:
+            river_system.audit.append('predict.baseline', {'model': model, 'buyer': buyer, 'seller': seller, 'prediction': res.get('prediction')})
+        except Exception:
+            pass
         return jsonify(res)
     else:
         return jsonify({'status':'error','message':'unknown model'}), 400
@@ -540,7 +524,15 @@ def train_ml():
     else:
         return jsonify({'status':'error','message':'unknown model'}), 400
     if 'error' in out:
+        try:
+            river_system.audit.append('train.baseline.error', {'model': model, 'error': out['error']})
+        except Exception:
+            pass
         return jsonify({'status':'error','message':out['error']}), 400
+    try:
+        river_system.audit.append('train.baseline.ok', {'model': model, 'metrics': out.get('metrics'), 'used_graph': out.get('used_graph')})
+    except Exception:
+        pass
     return jsonify({'status':'ok','result': out})
 
 @app.route('/api/train-deep', methods=['POST'])
@@ -550,8 +542,16 @@ def train_deep():
         if river_system.deep_predictor is None:
             river_system.deep_predictor = DeepPredictor(train_csv='train_tradedata.csv', models_dir='models')
         metrics = river_system.deep_predictor.train()
+        try:
+            river_system.audit.append('train.deep.ok', {'metrics': metrics})
+        except Exception:
+            pass
         return jsonify({'status': 'ok', 'metrics': metrics})
     except Exception as e:
+        try:
+            river_system.audit.append('train.deep.error', {'error': str(e)})
+        except Exception:
+            pass
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/evaluate-deep')
@@ -588,8 +588,16 @@ def zk_verify():
         if proof is None or public_signals is None:
             return jsonify({'status': 'error', 'message': 'missing proof or publicSignals'}), 400
         ok = river_system.zk.verify(proof, public_signals)
+        try:
+            river_system.audit.append('zk.verify', {'verified': bool(ok)})
+        except Exception:
+            pass
         return jsonify({'status': 'ok', 'verified': ok})
     except Exception as e:
+        try:
+            river_system.audit.append('zk.verify.error', {'error': str(e)})
+        except Exception:
+            pass
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/zk/metrics')
@@ -602,6 +610,60 @@ def zk_metrics():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+@app.route('/api/fl/init', methods=['POST'])
+def fl_init():
+    try:
+        payload = request.get_json() or {}
+        cfg = FLConfig(
+            n_clients=int(payload.get('n_clients', 5)),
+            client_fraction=float(payload.get('client_fraction', 1.0)),
+            local_epochs=int(payload.get('local_epochs', 1)),
+            batch_size=int(payload.get('batch_size', 64)),
+            lr=float(payload.get('lr', 1e-2)),
+            clip_norm=float(payload.get('clip_norm', 1.0)),
+            seed=int(payload.get('seed', 42)),
+        )
+        river_system.fl = FederatedSimulator(river_system.audit)
+        res = river_system.fl.init(cfg)
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({'status':'error','message': str(e)}), 400
+
+
+@app.route('/api/fl/round', methods=['POST'])
+def fl_round():
+    try:
+        if getattr(river_system, 'fl', None) is None:
+            return jsonify({'status':'error','message':'fl not initialized'}), 400
+        res = river_system.fl.run_round()
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({'status':'error','message': str(e)}), 400
+
+
+@app.route('/api/fl/status')
+def fl_status():
+    try:
+        if getattr(river_system, 'fl', None) is None:
+            return jsonify({'status':'error','message':'fl not initialized'}), 400
+        return jsonify(river_system.fl.status())
+    except Exception as e:
+        return jsonify({'status':'error','message': str(e)}), 400
+
+
+@app.route('/api/fl/predict')
+def fl_predict():
+    try:
+        if getattr(river_system, 'fl', None) is None:
+            return jsonify({'status':'error','message':'fl not initialized'}), 400
+        buyer = int(request.args.get('buyer', 1))
+        seller = int(request.args.get('seller', 2))
+        yhat = river_system.fl.predict(buyer, seller)
+        river_system.audit.append('fl.predict', {'buyer': buyer, 'seller': seller, 'prediction': yhat})
+        return jsonify({'prediction': yhat})
+    except Exception as e:
+        return jsonify({'status':'error','message': str(e)}), 400
+
 @app.route('/initialize-database')
 def initialize_database():
     """Initialize the Neo4j database with river data"""
@@ -612,10 +674,22 @@ def initialize_database():
             river_system.create_relationships(nodes, data)
             monitoring_nodes = river_system.create_monitoring_nodes(data)
             river_system.create_monitoring_relationships(nodes, monitoring_nodes)
+            try:
+                river_system.audit.append('db.init.ok', {'nodes': len(nodes), 'monitoring_points': len(monitoring_nodes)})
+            except Exception:
+                pass
             flash('Database initialized successfully!', 'success')
         else:
+            try:
+                river_system.audit.append('db.init.empty', {})
+            except Exception:
+                pass
             flash('No data found to initialize database', 'error')
     except Exception as e:
+        try:
+            river_system.audit.append('db.init.error', {'error': str(e)})
+        except Exception:
+            pass
         flash(f'Error initializing database: {e}', 'error')
     
     return redirect(url_for('index'))
@@ -662,10 +736,18 @@ def add_test_data():
                 rel = Relationship(monitoring_node, 'MONITORS', test_nodes[i-1])
                 river_system.g.create(rel)
         
+        try:
+            river_system.audit.append('db.testdata.ok', {'river_nodes': len(test_nodes), 'monitoring_points': 3})
+        except Exception:
+            pass
         flash('Test data added successfully!', 'success')
         return redirect(url_for('index'))
         
     except Exception as e:
+        try:
+            river_system.audit.append('db.testdata.error', {'error': str(e)})
+        except Exception:
+            pass
         flash(f'Error adding test data: {e}', 'error')
         return redirect(url_for('index'))
 
